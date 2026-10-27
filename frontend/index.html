@@ -1,0 +1,77 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskFlow | My Workspace</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js" defer></script>
+</head>
+<body>
+    <div class="app">
+        <aside class="sidebar">
+            <h2 class="logo">TaskFlow<span>.</span></h2>
+            <p class="menu-label">WORKSPACE</p>
+            <button class="nav-item active" data-filter="all">▦ All Tasks</button>
+            <button class="nav-item" data-filter="pending">◷ Pending</button>
+            <button class="nav-item" data-filter="completed">✓ Completed</button>
+            <div class="sidebar-note">
+                <p>Small steps.</p>
+                <strong>Big progress.</strong>
+            </div>
+        </aside>
+
+        <main class="main">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">YOUR WORKSPACE</p>
+                    <h1>My Tasks</h1>
+                    <p class="subtitle">Plan your day. Make progress.</p>
+                </div>
+                <div class="avatar">S</div>
+            </header>
+
+            <section class="stats">
+                <article class="stat-card">
+                    <p>Total tasks</p>
+                    <h2 id="totalCount">0</h2>
+                </article>
+                <article class="stat-card">
+                    <p>In progress</p>
+                    <h2 id="pendingCount">0</h2>
+                </article>
+                <article class="stat-card">
+                    <p>Completed</p>
+                    <h2 id="completedCount">0</h2>
+                </article>
+            </section>
+
+            <section class="task-section">
+                <div class="section-heading">
+                    <div>
+                        <h2>My task list</h2>
+                        <p>Keep your priorities clear.</p>
+                    </div>
+                    <button id="addTaskBtn" class="primary-btn">+ Add Task</button>
+                </div>
+
+                <form id="taskForm" class="task-form hidden">
+                    <input id="taskTitle" type="text"
+                           placeholder="What do you need to do?" required>
+                    <select id="taskPriority">
+                        <option value="Medium">Medium priority</option>
+                        <option value="High">High priority</option>
+                        <option value="Low">Low priority</option>
+                    </select>
+                    <button class="primary-btn" type="submit">Save Task</button>
+                </form>
+
+                <p id="appMessage" class="app-message hidden" role="status"></p>
+                <div id="taskList" class="task-list"></div>
+            </section>
+            <p class="footer-note">One task at a time. You've got this.</p>
+        </main>
+    </div>
+</body>
+</html>
