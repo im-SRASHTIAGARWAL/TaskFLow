@@ -66,11 +66,31 @@ def db_bool(value):
 def home():
     return {"message": "Welcome to TaskFlow!", "status": "running"}
 
-
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    from Backend.database import DATABASE_URL
 
+    if not DATABASE_URL:
+        return {
+            "status": "healthy",
+            "database": "sqlite"
+        }
+
+    try:
+        with get_connection() as connection:
+            connection.execute("SELECT 1").fetchone()
+
+        return {
+            "status": "healthy",
+            "database": "postgresql"
+        }
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection failed"
+        )
+
+    
 
 @app.get("/tasks")
 def get_tasks():
