@@ -1,4 +1,5 @@
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -6,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from Backend.database import get_connection, init_db
+
+USE_POSTGRES = bool(os.getenv("DATABASE_URL"))
 
 
 @asynccontextmanager
@@ -15,7 +18,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="TaskFlow API", lifespan=lifespan)
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,12 +54,17 @@ def row_to_task(row):
     }
 
 
+def placeholder():
+    return "%s" if USE_POSTGRES else "?"
+
+
+def db_bool(value):
+    return value if USE_POSTGRES else int(value)
+
+
 @app.get("/")
 def home():
-    return {
-        "message": "Welcome to TaskFlow!",
-        "status": "running",
-    }
+    return {"message": "Welcome to TaskFlow!", "status": "running"}
 
 
 @app.get("/health")
@@ -71,39 +78,41 @@ def get_tasks():
         rows = connection.execute(
             "SELECT * FROM tasks ORDER BY id DESC"
         ).fetchall()
-
         return [row_to_task(row) for row in rows]
 
 
 @app.post("/tasks", status_code=201)
 def create_task(task: TaskCreate):
     title = task.title.strip()
-
     if not title:
-        raise HTTPException(
-            status_code=422,
-            detail="Title cannot be empty",
-        )
-
+        raise HTTPException(422, "Title cannot be empty")
     if task.priority not in ["Low", "Medium", "High"]:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid priority",
-        )
+        raise HTTPException(400, "Invalid priority")
+
+    p = placeholder()
 
     with get_connection() as connection:
-        cursor = connection.execute(
-            """
-            INSERT INTO tasks (title, priority, completed)
-            VALUES (?, ?, ?)
-            """,
-            (title, task.priority, int(task.completed)),
-        )
-
-        row = connection.execute(
-            "SELECT * FROM tasks WHERE id = ?",
-            (cursor.lastrowid,),
-        ).fetchone()
+        if USE_POSTGRES:
+            row = connection.execute(
+                f"""
+                INSERT INTO tasks (title, priority, completed)
+                VALUES ({p}, {p}, {p})
+                RETURNING id, title, priority, completed
+                """,
+                (title, task.priority, db_bool(task.completed)),
+            ).fetchone()
+        else:
+            cursor = connection.execute(
+                f"""
+                INSERT INTO tasks (title, priority, completed)
+                VALUES ({p}, {p}, {p})
+                """,
+                (title, task.priority, db_bool(task.completed)),
+            )
+            row = connection.execute(
+                f"SELECT * FROM tasks WHERE id = {p}",
+                (cursor.lastrowid,),
+            ).fetchone()
 
         return row_to_task(row)
 
@@ -111,37 +120,33 @@ def create_task(task: TaskCreate):
 @app.put("/tasks/{task_id}")
 def update_task(task_id: int, updated: TaskUpdate):
     title = updated.title.strip()
-
     if not title:
-        raise HTTPException(
-            status_code=422,
-            detail="Title cannot be empty",
-        )
-
+        raise HTTPException(422, "Title cannot be empty")
     if updated.priority not in ["Low", "Medium", "High"]:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid priority",
-        )
+        raise HTTPException(400, "Invalid priority")
+
+    p = placeholder()
 
     with get_connection() as connection:
         cursor = connection.execute(
-            """
+            f"""
             UPDATE tasks
-            SET title = ?, priority = ?, completed = ?
-            WHERE id = ?
+            SET title = {p}, priority = {p}, completed = {p}
+            WHERE id = {p}
             """,
-            (title, updated.priority, int(updated.completed), task_id),
+            (
+                title,
+                updated.priority,
+                db_bool(updated.completed),
+                task_id,
+            ),
         )
 
         if cursor.rowcount == 0:
-            raise HTTPException(
-                status_code=404,
-                detail="Task not found",
-            )
+            raise HTTPException(404, "Task not found")
 
         row = connection.execute(
-            "SELECT * FROM tasks WHERE id = ?",
+            f"SELECT * FROM tasks WHERE id = {p}",
             (task_id,),
         ).fetchone()
 
@@ -150,17 +155,16 @@ def update_task(task_id: int, updated: TaskUpdate):
 
 @app.delete("/tasks/{task_id}")
 def delete_task(task_id: int):
+    p = placeholder()
+
     with get_connection() as connection:
         cursor = connection.execute(
-            "DELETE FROM tasks WHERE id = ?",
+            f"DELETE FROM tasks WHERE id = {p}",
             (task_id,),
         )
 
         if cursor.rowcount == 0:
-            raise HTTPException(
-                status_code=404,
-                detail="Task not found",
-            )
+            raise HTTPException(404, "Task not found")
 
         return {
             "message": "Task deleted successfully",
