@@ -4,3 +4,10 @@ uvicorn
 pytest
 httpx
 psycopg[binary]
+python-dotenv
+sqlalchemy
+passlib[bcrypt]
+python-jose[cryptography]
+alembic
+email-validator
+python-multipart

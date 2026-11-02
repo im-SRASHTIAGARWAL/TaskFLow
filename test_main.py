@@ -1,37 +1,74 @@
 
-import sqlite3
-
 import pytest
+
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 import Backend.main as main
-from Backend.database import get_connection
+from Backend.models import Base, User
+from Backend.database import get_db
+from Backend.auth import hash_password, create_access_token
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    # Use an isolated temporary database for each test.
     test_db = tmp_path / "test_taskflow.db"
 
-    def test_connection():
-        connection = sqlite3.connect(test_db)
-        connection.row_factory = sqlite3.Row
-        return connection
+    test_engine = create_engine(
+        f"sqlite:///{test_db.as_posix()}",
+        connect_args={"check_same_thread": False},
+    )
 
-    monkeypatch.setattr(main, "get_connection", test_connection)
+    TestingSessionLocal = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=test_engine,
+    )
 
-    with test_connection() as connection:
-        connection.execute("""
-            CREATE TABLE tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                priority TEXT NOT NULL DEFAULT 'Medium',
-                completed INTEGER NOT NULL DEFAULT 0
-            )
-        """)
+    # Use temporary test database
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    main.app.dependency_overrides[get_db] = override_get_db
 
     with TestClient(main.app) as test_client:
+
+        # Create a test user
+        db = TestingSessionLocal()
+
+        test_user = User(
+            username="testuser",
+            email="testuser@example.com",
+            hashed_password=hash_password("TestPassword123"),
+        )
+
+        db.add(test_user)
+        db.commit()
+        db.refresh(test_user)
+
+        # Generate JWT token for test user
+        token = create_access_token(
+            {"sub": str(test_user.id)}
+        )
+
+        db.close()
+
+        # Automatically authenticate all test requests
+        test_client.headers.update({
+            "Authorization": f"Bearer {token}"
+        })
+
         yield test_client
+
+    main.app.dependency_overrides.clear()
+    test_engine.dispose()
 
 
 def test_home_endpoint(client):
@@ -133,3 +170,66 @@ def test_invalid_priority_is_rejected(client):
     )
 
     assert response.status_code == 400
+
+def test_user_registration(client):
+    response = client.post(
+        "/auth/register",
+        json={
+            "username": "newuser",
+            "email": "newuser@example.com",
+            "password": "StrongPass123"
+        }
+    )
+
+    assert response.status_code == 201
+    assert response.json()["username"] == "newuser"
+    assert response.json()["email"] == "newuser@example.com"
+    assert "hashed_password" not in response.json()
+
+
+def test_duplicate_user_registration(client):
+    user_data = {
+        "username": "duplicateuser",
+        "email": "duplicate@example.com",
+        "password": "StrongPass123"
+    }
+
+    first_response = client.post(
+        "/auth/register",
+        json=user_data
+    )
+
+    second_response = client.post(
+        "/auth/register",
+        json=user_data
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 409
+
+
+def test_user_login(client):
+    response = client.post(
+        "/auth/login",
+        data={
+            "username": "testuser",
+            "password": "TestPassword123"
+        }
+    )
+
+    assert response.status_code == 200
+    assert "access_token" in response.json()
+    assert response.json()["token_type"] == "bearer"
+
+
+def test_invalid_login(client):
+    response = client.post(
+        "/auth/login",
+        data={
+            "username": "testuser",
+            "password": "WrongPassword123"
+        }
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid username or password"

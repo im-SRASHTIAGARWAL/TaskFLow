@@ -1,6 +1,135 @@
 
 const API_URL = "https://taskflow-api-wbfe.onrender.com/tasks";
 
+
+const AUTH_URL = "https://taskflow-api-wbfe.onrender.com/auth";
+
+let authMode = "login";
+let authToken = localStorage.getItem("taskflow_token");
+
+const authSection = document.getElementById("authSection");
+const dashboard = document.getElementById("dashboard");
+const authForm = document.getElementById("authForm");
+const authUsername = document.getElementById("authUsername");
+const authEmail = document.getElementById("authEmail");
+const authPassword = document.getElementById("authPassword");
+const authTitle = document.getElementById("authTitle");
+const authSubtitle = document.getElementById("authSubtitle");
+const authSubmitBtn = document.getElementById("authSubmitBtn");
+const authToggleBtn = document.getElementById("authToggleBtn");
+const authSwitchText = document.getElementById("authSwitchText");
+const authMessage = document.getElementById("authMessage");
+
+function showAuthMessage(message) {
+    authMessage.textContent = message;
+}
+
+authToggleBtn.addEventListener("click", () => {
+    authMode = authMode === "login" ? "register" : "login";
+
+    const isRegister = authMode === "register";
+
+    authTitle.textContent = isRegister ? "Create Account" : "Welcome Back!";
+    authSubtitle.textContent = isRegister
+        ? "Register to start managing your tasks."
+        : "Login to access your workspace.";
+
+    authEmail.classList.toggle("hidden", !isRegister);
+    authEmail.required = isRegister;
+
+    authSubmitBtn.textContent = isRegister ? "Register" : "Login";
+    authSwitchText.textContent = isRegister
+        ? "Already have an account?"
+        : "Don't have an account?";
+
+    authToggleBtn.textContent = isRegister ? "Login" : "Register";
+
+    authForm.reset();
+    showAuthMessage("");
+});
+
+async function authenticate(event) {
+    event.preventDefault();
+    showAuthMessage("");
+
+    const username = authUsername.value.trim();
+    const password = authPassword.value;
+
+    try {
+        let response;
+
+        if (authMode === "register") {
+            response = await fetch(`${AUTH_URL}/register`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    username,
+                    email: authEmail.value.trim(),
+                    password
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || "Registration failed");
+            }
+
+            authMode = "login";
+            authTitle.textContent = "Welcome Back!";
+            authSubtitle.textContent = "Account created! Please login.";
+            authEmail.classList.add("hidden");
+            authEmail.required = false;
+            authSubmitBtn.textContent = "Login";
+            authSwitchText.textContent = "Don't have an account?";
+            authToggleBtn.textContent = "Register";
+            authForm.reset();
+
+            showAuthMessage("Registration successful! Please login.");
+            return;
+        }
+
+        response = await fetch(`${AUTH_URL}/login`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: new URLSearchParams({
+                username,
+                password
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || "Login failed");
+        }
+
+        const data = await response.json();
+
+        authToken = data.access_token;
+        localStorage.setItem("taskflow_token", authToken);
+
+        authSection.classList.add("hidden");
+        dashboard.classList.remove("hidden");
+
+        await loadTasks();
+
+    } catch (error) {
+        showAuthMessage(error.message);
+        console.error("Authentication error:", error);
+    }
+}
+
+authForm.addEventListener("submit", authenticate);
+
+function showDashboard() {
+    authSection.classList.add("hidden");
+    dashboard.classList.remove("hidden");
+}
+
+
 const taskForm = document.getElementById("taskForm");
 const taskTitle = document.getElementById("taskTitle");
 const taskPriority = document.getElementById("taskPriority");
@@ -37,8 +166,20 @@ function hideMessage() {
 }
 
 
+
 async function apiRequest(url, options = {}) {
-    const response = await fetch(url, options);
+    const headers = {
+        ...(options.headers || {})
+    };
+
+    if (authToken) {
+        headers["Authorization"] = `Bearer ${authToken}`;
+    }
+
+    const response = await fetch(url, {
+        ...options,
+        headers
+    });
 
     if (!response.ok) {
         let message = `Request failed (${response.status})`;
@@ -49,10 +190,12 @@ async function apiRequest(url, options = {}) {
                 message = body.detail;
             }
         } catch {
-            // Keep the default error message if no JSON body exists.
+            // Keep default error message
         }
 
-        throw new Error(message);
+        const error = new Error(message);
+        error.status = response.status;
+        throw error;
     }
 
     return response;
@@ -70,13 +213,20 @@ async function loadTasks() {
         const response = await apiRequest(API_URL);
         tasks = await response.json();
         renderTasks();
-    } catch (error) {
+    } 
+    catch (error) {
+        if (error.status === 401) {
+            logout();
+            showAuthMessage("Your session expired. Please login again.");
+            return;
+        }
         taskList.replaceChildren();
         showMessage(
             "Couldn't load tasks. Check that the backend is running, then refresh.",
             "error"
         );
         console.error("Load tasks error:", error);
+
     }
 }
 
@@ -134,7 +284,7 @@ document.querySelectorAll(".nav-item").forEach((button) => {
 
 async function updateTask(task, changes) {
     try {
-        const response = await fetch(`${API_URL}/${task.id}`, {
+        const response = await apiRequest(`${API_URL}/${task.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ...task, ...changes })
@@ -155,7 +305,7 @@ async function updateTask(task, changes) {
 
 async function deleteTask(taskId) {
     try {
-        const response = await fetch(`${API_URL}/${taskId}`, {
+        const response = await apiRequest(`${API_URL}/${taskId}`, {
             method: "DELETE"
         });
 
@@ -267,4 +417,31 @@ function renderTasks() {
     });
 }
 
-loadTasks();
+async function initializeApp() {
+    if (authToken) {
+        showDashboard();
+        await loadTasks();
+    } else {
+        authSection.classList.remove("hidden");
+        dashboard.classList.add("hidden");
+    }
+}
+
+initializeApp();
+
+function logout() {
+    localStorage.removeItem("taskflow_token");
+    authToken = null;
+
+    tasks = [];
+    taskList.replaceChildren();
+
+    dashboard.classList.add("hidden");
+    authSection.classList.remove("hidden");
+
+    authForm.reset();
+    hideMessage();
+    showAuthMessage("You have been logged out.");
+}
+
+document.getElementById("logoutBtn").addEventListener("click", logout);
