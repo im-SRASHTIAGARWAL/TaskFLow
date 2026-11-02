@@ -7,6 +7,11 @@ const AUTH_URL = "https://taskflow-api-wbfe.onrender.com/auth";
 let authMode = "login";
 let authToken = localStorage.getItem("taskflow_token");
 
+let currentUsername = localStorage.getItem("taskflow_username") || "";
+
+const userAvatar = document.getElementById("userAvatar");
+const displayUsername = document.getElementById("displayUsername");
+
 const authSection = document.getElementById("authSection");
 const dashboard = document.getElementById("dashboard");
 const authForm = document.getElementById("authForm");
@@ -111,6 +116,12 @@ async function authenticate(event) {
         authToken = data.access_token;
         localStorage.setItem("taskflow_token", authToken);
 
+        currentUsername = data.username;
+        localStorage.setItem("taskflow_username", currentUsername);
+
+        displayUsername.textContent = currentUsername;
+        userAvatar.textContent = currentUsername.charAt(0).toUpperCase();
+
         authSection.classList.add("hidden");
         dashboard.classList.remove("hidden");
 
@@ -127,6 +138,11 @@ authForm.addEventListener("submit", authenticate);
 function showDashboard() {
     authSection.classList.add("hidden");
     dashboard.classList.remove("hidden");
+
+    if (currentUsername) {
+        displayUsername.textContent = currentUsername;
+        userAvatar.textContent = currentUsername.charAt(0).toUpperCase();
+    }
 }
 
 
@@ -432,6 +448,8 @@ initializeApp();
 function logout() {
     localStorage.removeItem("taskflow_token");
     authToken = null;
+    localStorage.removeItem("taskflow_username");
+    currentUsername = "";
 
     tasks = [];
     taskList.replaceChildren();

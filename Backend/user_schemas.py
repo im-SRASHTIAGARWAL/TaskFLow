@@ -15,7 +15,7 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
 
-
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    username: str

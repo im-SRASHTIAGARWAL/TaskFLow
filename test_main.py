@@ -137,9 +137,8 @@ def test_delete_task(client):
 
 
 def test_update_missing_task_returns_404(client):
-    response = client.put(
-        "/tasks/999",
-        json={
+    response = client.put("/tasks/999",json=
+        {
             "title": "Does not exist",
             "priority": "Medium",
             "completed": False,

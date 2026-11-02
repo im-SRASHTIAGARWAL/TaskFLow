@@ -450,3 +450,15 @@ button:disabled {
 .logout-btn:hover {
     background: #f0edff;
 }
+.display-username {
+    font-size: 14px;
+    font-weight: 600;
+    color: #20243a;
+}
+
+.avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+}
