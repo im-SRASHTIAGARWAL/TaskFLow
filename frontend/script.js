@@ -25,6 +25,62 @@ const authToggleBtn = document.getElementById("authToggleBtn");
 const authSwitchText = document.getElementById("authSwitchText");
 const authMessage = document.getElementById("authMessage");
 
+const editModal = document.getElementById("editModal");
+const editTaskForm = document.getElementById("editTaskForm");
+const editTitle = document.getElementById("editTitle");
+const editPriority = document.getElementById("editPriority");
+const cancelEditBtn = document.getElementById("cancelEditBtn");
+
+let editingTask = null;
+
+function openEditModal(task) {
+    editingTask = task;
+
+    editTitle.value = task.title;
+    editPriority.value = task.priority;
+
+    editModal.classList.remove("hidden");
+    editTitle.focus();
+}
+
+function closeEditModal() {
+    editModal.classList.add("hidden");
+    editingTask = null;
+    editTaskForm.reset();
+}
+
+cancelEditBtn.addEventListener("click", closeEditModal);
+
+editModal.addEventListener("click", (event) => {
+    if (event.target === editModal) {
+        closeEditModal();
+    }
+});
+
+editTaskForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    if (!editingTask) return;
+
+    const title = editTitle.value.trim();
+    const priority = editPriority.value;
+
+    if (!title) {
+        showMessage("Task title cannot be empty.", "error");
+        return;
+    }
+
+    const taskToUpdate = editingTask;
+
+    try {
+        await updateTask(taskToUpdate, { title, priority });
+
+        closeEditModal();
+    } catch (error) {
+        console.error("Edit task error:", error);
+    }
+});
+
 function showAuthMessage(message) {
     authMessage.textContent = message;
 }
@@ -176,10 +232,7 @@ function showMessage(message, type = "info") {
     appMessage.className = `app-message ${type}`;
 }
 
-function hideMessage() {
-    appMessage.textContent = "";
-    appMessage.className = "app-message hidden";
-}
+
 
 
 
@@ -320,19 +373,27 @@ async function updateTask(task, changes) {
 }
 
 async function deleteTask(taskId) {
+
+    const confirmDelete = confirm(
+        "Are you sure you want to delete this task? This action cannot be undone."
+    );
+
+    if (!confirmDelete) {
+        return;
+    }
+
     try {
-        const response = await apiRequest(`${API_URL}/${taskId}`, {
+        await apiRequest(`${API_URL}/${taskId}`, {
             method: "DELETE"
         });
 
-        if (!response.ok) {
-            throw new Error("Could not delete task");
-        }
         showMessage("Task deleted successfully.", "success");
+
         await loadTasks();
+
     } catch (error) {
-        alert("Unable to delete task.");
-        console.error(error);
+        showMessage("Unable to delete task. Please try again.", "error");
+        console.error("Delete error:", error);
     }
 }
 
@@ -352,12 +413,33 @@ function renderTasks() {
     taskList.replaceChildren();
 
     if (visibleTasks.length === 0) {
-        const empty = document.createElement("p");
-        empty.className = "empty-state";
-        empty.textContent = "No tasks here yet. Add one to get started!";
-        taskList.appendChild(empty);
-        return;
-    }
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+
+    const icon = document.createElement("div");
+    icon.className = "empty-icon";
+    icon.textContent = currentFilter === "completed" ? "✓" : "📝";
+
+    const heading = document.createElement("h3");
+    heading.textContent =
+        currentFilter === "pending"
+            ? "All caught up!"
+            : currentFilter === "completed"
+            ? "No completed tasks yet"
+            : "Your workspace is empty";
+
+    const message = document.createElement("p");
+    message.textContent =
+        currentFilter === "pending"
+            ? "You have no pending tasks. Great work!"
+            : currentFilter === "completed"
+            ? "Complete a task and it will appear here."
+            : "Start organizing your day by adding your first task.";
+
+    empty.append(icon, heading, message);
+    taskList.appendChild(empty);
+    return;
+}
 
     visibleTasks.forEach((task) => {
         const card = document.createElement("article");
@@ -389,36 +471,12 @@ function renderTasks() {
 
         
     const editButton = document.createElement("button");
-    editButton.className = "edit-btn";
-    editButton.textContent = "Edit";
-    editButton.addEventListener("click", () => {
-        const newTitle = prompt("Edit task title:", task.title);
+editButton.className = "edit-btn";
+editButton.textContent = "Edit";
 
-        if (newTitle === null) return;
-
-        const title = newTitle.trim();
-
-        if (!title) {
-            alert("Task title cannot be empty.");
-            return;
-        }
-
-        const newPriority = prompt(
-            "Priority: Low, Medium, or High",
-            task.priority
-        );
-
-        if (newPriority === null) return;
-
-        const priority = newPriority.trim();
-
-        if (!["Low", "Medium", "High"].includes(priority)) {
-            alert("Please enter Low, Medium, or High.");
-            return;
-        }
-
-        updateTask(task, { title, priority });
-    });
+editButton.addEventListener("click", () => {
+    openEditModal(task);
+});
 
     const deleteButton = document.createElement("button");
     deleteButton.className = "delete-btn";

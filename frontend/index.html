@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="style.css">
     <script src="script.js" defer></script>
 </head>
+
 <body>
     
 <section id="authSection" class="auth-section">
@@ -120,5 +121,35 @@
             <p class="footer-note">One task at a time. You've got this.</p>
         </main>
     </div>
+    <div id="editModal" class="modal hidden">
+    <div class="modal-content">
+        <h2>Edit Task</h2>
+        <p>Update your task details below.</p>
+
+        <form id="editTaskForm">
+            <label for="editTitle">Task Title</label>
+            <input
+                type="text"
+                id="editTitle"
+                required
+                maxlength="200"
+            >
+
+            <label for="editPriority">Priority</label>
+            <select id="editPriority" required>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+            </select>
+
+            <div class="modal-actions">
+                <button type="button" id="cancelEditBtn">Cancel</button>
+                <button type="submit" class="primary-btn">
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 </body>
 </html>
