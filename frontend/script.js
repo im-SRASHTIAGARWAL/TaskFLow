@@ -1,17 +1,22 @@
 
 const API_URL = "https://taskflow-api-wbfe.onrender.com/tasks";
-
-
 const AUTH_URL = "https://taskflow-api-wbfe.onrender.com/auth";
 
 let authMode = "login";
 let authToken = localStorage.getItem("taskflow_token");
-
 let currentUsername = localStorage.getItem("taskflow_username") || "";
 
+let tasks = [];
+let currentFilter = "all";
+let currentSearch = "";
+let currentPriority = "all";
+let editingTask = null;
+
+// User elements
 const userAvatar = document.getElementById("userAvatar");
 const displayUsername = document.getElementById("displayUsername");
 
+// Authentication elements
 const authSection = document.getElementById("authSection");
 const dashboard = document.getElementById("dashboard");
 const authForm = document.getElementById("authForm");
@@ -25,61 +30,26 @@ const authToggleBtn = document.getElementById("authToggleBtn");
 const authSwitchText = document.getElementById("authSwitchText");
 const authMessage = document.getElementById("authMessage");
 
+// Task elements
+const taskForm = document.getElementById("taskForm");
+const taskTitle = document.getElementById("taskTitle");
+const taskPriority = document.getElementById("taskPriority");
+const taskDueDate = document.getElementById("taskDueDate");
+const taskList = document.getElementById("taskList");
+const appMessage = document.getElementById("appMessage");
+const addTaskBtn = document.getElementById("addTaskBtn");
+const taskSearch = document.getElementById("taskSearch");
+const priorityFilter = document.getElementById("priorityFilter");
+
+// Edit modal elements
 const editModal = document.getElementById("editModal");
 const editTaskForm = document.getElementById("editTaskForm");
 const editTitle = document.getElementById("editTitle");
 const editPriority = document.getElementById("editPriority");
+const editDueDate = document.getElementById("editDueDate");
 const cancelEditBtn = document.getElementById("cancelEditBtn");
 
-let editingTask = null;
-
-function openEditModal(task) {
-    editingTask = task;
-
-    editTitle.value = task.title;
-    editPriority.value = task.priority;
-
-    editModal.classList.remove("hidden");
-    editTitle.focus();
-}
-
-function closeEditModal() {
-    editModal.classList.add("hidden");
-    editingTask = null;
-    editTaskForm.reset();
-}
-
-cancelEditBtn.addEventListener("click", closeEditModal);
-
-editModal.addEventListener("click", (event) => {
-    if (event.target === editModal) {
-        closeEditModal();
-    }
-});
-
-editTaskForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-
-    if (!editingTask) return;
-
-    const title = editTitle.value.trim();
-    const priority = editPriority.value;
-
-    if (!title) {
-        showMessage("Task title cannot be empty.", "error");
-        return;
-    }
-
-    const taskToUpdate = editingTask;
-
-    try {
-        await updateTask(taskToUpdate, { title, priority });
-
-        closeEditModal();
-    } catch (error) {
-        console.error("Edit task error:", error);
-    }
-});
+// ---------------- AUTHENTICATION ----------------
 
 function showAuthMessage(message) {
     authMessage.textContent = message;
@@ -90,7 +60,10 @@ authToggleBtn.addEventListener("click", () => {
 
     const isRegister = authMode === "register";
 
-    authTitle.textContent = isRegister ? "Create Account" : "Welcome Back!";
+    authTitle.textContent = isRegister
+        ? "Create Account"
+        : "Welcome Back!";
+
     authSubtitle.textContent = isRegister
         ? "Register to start managing your tasks."
         : "Login to access your workspace.";
@@ -99,6 +72,7 @@ authToggleBtn.addEventListener("click", () => {
     authEmail.required = isRegister;
 
     authSubmitBtn.textContent = isRegister ? "Register" : "Login";
+
     authSwitchText.textContent = isRegister
         ? "Already have an account?"
         : "Don't have an account?";
@@ -138,13 +112,17 @@ async function authenticate(event) {
             }
 
             authMode = "login";
+
             authTitle.textContent = "Welcome Back!";
             authSubtitle.textContent = "Account created! Please login.";
+
             authEmail.classList.add("hidden");
             authEmail.required = false;
+
             authSubmitBtn.textContent = "Login";
             authSwitchText.textContent = "Don't have an account?";
             authToggleBtn.textContent = "Register";
+
             authForm.reset();
 
             showAuthMessage("Registration successful! Please login.");
@@ -178,9 +156,7 @@ async function authenticate(event) {
         displayUsername.textContent = currentUsername;
         userAvatar.textContent = currentUsername.charAt(0).toUpperCase();
 
-        authSection.classList.add("hidden");
-        dashboard.classList.remove("hidden");
-
+        showDashboard();
         await loadTasks();
 
     } catch (error) {
@@ -201,16 +177,7 @@ function showDashboard() {
     }
 }
 
-
-const taskForm = document.getElementById("taskForm");
-const taskTitle = document.getElementById("taskTitle");
-const taskPriority = document.getElementById("taskPriority");
-const taskList = document.getElementById("taskList");
-
-
-const appMessage = document.getElementById("appMessage");
-const addTaskBtn = document.getElementById("addTaskBtn");
-
+// ---------------- NOTIFICATIONS ----------------
 
 function showMessage(message, type = "info") {
     appMessage.replaceChildren();
@@ -222,6 +189,7 @@ function showMessage(message, type = "info") {
     closeButton.type = "button";
     closeButton.textContent = "×";
     closeButton.setAttribute("aria-label", "Dismiss message");
+
     closeButton.style.cssText =
         "float:right;border:0;background:transparent;" +
         "font-size:18px;cursor:pointer;margin-left:12px;";
@@ -232,9 +200,12 @@ function showMessage(message, type = "info") {
     appMessage.className = `app-message ${type}`;
 }
 
+function hideMessage() {
+    appMessage.textContent = "";
+    appMessage.className = "app-message hidden";
+}
 
-
-
+// ---------------- API REQUEST ----------------
 
 async function apiRequest(url, options = {}) {
     const headers = {
@@ -255,6 +226,7 @@ async function apiRequest(url, options = {}) {
 
         try {
             const body = await response.json();
+
             if (body.detail) {
                 message = body.detail;
             }
@@ -264,43 +236,46 @@ async function apiRequest(url, options = {}) {
 
         const error = new Error(message);
         error.status = response.status;
+
         throw error;
     }
 
     return response;
 }
 
-
-let tasks = [];
-let currentFilter = "all";
-
+// ---------------- LOAD TASKS ----------------
 
 async function loadTasks() {
     taskList.textContent = "Loading tasks...";
 
     try {
         const response = await apiRequest(API_URL);
+
         tasks = await response.json();
+
         renderTasks();
-    } 
-    catch (error) {
+
+    } catch (error) {
         if (error.status === 401) {
             logout();
             showAuthMessage("Your session expired. Please login again.");
             return;
         }
+
         taskList.replaceChildren();
+
         showMessage(
             "Couldn't load tasks. Check that the backend is running, then refresh.",
             "error"
         );
-        console.error("Load tasks error:", error);
 
+        console.error("Load tasks error:", error);
     }
 }
 
+// ---------------- ADD TASK ----------------
 
-document.getElementById("addTaskBtn").addEventListener("click", () => {
+addTaskBtn.addEventListener("click", () => {
     taskForm.classList.toggle("hidden");
 
     if (!taskForm.classList.contains("hidden")) {
@@ -312,32 +287,44 @@ taskForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     const title = taskTitle.value.trim();
+
     if (!title) return;
 
     try {
-        const response = await apiRequest(API_URL, {
+        await apiRequest(API_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json"
+            },
             body: JSON.stringify({
                 title,
                 priority: taskPriority.value,
-                completed: false
+                completed: false,
+                due_date: taskDueDate.value || null
             })
         });
 
-        if (!response.ok) {
-            throw new Error("Could not create task");
-        }
-
         taskForm.reset();
         taskForm.classList.add("hidden");
+
         await loadTasks();
+
         showMessage("Task added successfully!", "success");
+
     } catch (error) {
-        alert("Unable to add task. Please check the backend.");
-        console.error(error);
+        showMessage("Unable to add task. Please try again.", "error");
+        console.error("Add task error:", error);
     }
 });
+
+// ---------------- SEARCH TASKS ----------------
+
+taskSearch.addEventListener("input", () => {
+    currentSearch = taskSearch.value.trim().toLowerCase();
+    renderTasks();
+});
+
+// ---------------- STATUS FILTER ----------------
 
 document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => {
@@ -351,45 +338,61 @@ document.querySelectorAll(".nav-item").forEach((button) => {
     });
 });
 
+// ---------------- PRIORITY FILTER ----------------
+
+if (priorityFilter) {
+    priorityFilter.addEventListener("change", () => {
+        currentPriority = priorityFilter.value;
+        renderTasks();
+    });
+}
+
+// ---------------- UPDATE TASK ----------------
+
 async function updateTask(task, changes) {
     try {
-        const response = await apiRequest(`${API_URL}/${task.id}`, {
+        await apiRequest(`${API_URL}/${task.id}`, {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...task, ...changes })
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                ...task,
+                ...changes
+            })
         });
-
-        if (!response.ok) {
-            throw new Error("Could not update task");
-        }
 
         await loadTasks();
 
         showMessage("Task updated successfully!", "success");
+
+        return true;
+
     } catch (error) {
-        alert("Unable to update task.");
-        console.error(error);
+        showMessage("Unable to update task. Please try again.", "error");
+        console.error("Update task error:", error);
+
+        return false;
     }
 }
 
-async function deleteTask(taskId) {
+// ---------------- DELETE TASK ----------------
 
+async function deleteTask(taskId) {
     const confirmDelete = confirm(
         "Are you sure you want to delete this task? This action cannot be undone."
     );
 
-    if (!confirmDelete) {
-        return;
-    }
+    if (!confirmDelete) return;
 
     try {
         await apiRequest(`${API_URL}/${taskId}`, {
             method: "DELETE"
         });
 
-        showMessage("Task deleted successfully.", "success");
-
         await loadTasks();
+
+        showMessage("Task deleted successfully.", "success");
 
     } catch (error) {
         showMessage("Unable to delete task. Please try again.", "error");
@@ -397,63 +400,253 @@ async function deleteTask(taskId) {
     }
 }
 
-function renderTasks() {
-    const visibleTasks = tasks.filter((task) => {
-        if (currentFilter === "pending") return !task.completed;
-        if (currentFilter === "completed") return task.completed;
-        return true;
+// ---------------- EDIT TASK MODAL ----------------
+
+function openEditModal(task) {
+    editingTask = task;
+
+    editTitle.value = task.title;
+    editPriority.value = task.priority;
+    editDueDate.value = task.due_date || "";
+
+    editModal.classList.remove("hidden");
+    editTitle.focus();
+}
+
+function closeEditModal() {
+    editModal.classList.add("hidden");
+
+    editingTask = null;
+    editTaskForm.reset();
+}
+
+cancelEditBtn.addEventListener("click", closeEditModal);
+
+editModal.addEventListener("click", (event) => {
+    if (event.target === editModal) {
+        closeEditModal();
+    }
+});
+
+editTaskForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    if (!editingTask) return;
+
+    const title = editTitle.value.trim();
+    const priority = editPriority.value;
+    const dueDate = editDueDate.value || null;
+
+    if (!title) {
+        showMessage("Task title cannot be empty.", "error");
+        return;
+    }
+
+    const taskToUpdate = editingTask;
+
+    const success = await updateTask(taskToUpdate, {
+        title,
+        priority,
+        due_date: dueDate
     });
 
+    if (success) {
+        closeEditModal();
+    }
+});
+
+// ---------------- DUE DATE HELPERS ----------------
+
+// Get today's date in local YYYY-MM-DD format.
+function getLocalDateString() {
+    const today = new Date();
+
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+}
+
+// Convert YYYY-MM-DD into a local Date object.
+function parseLocalDate(dateString) {
+    if (!dateString) return null;
+
+    const parts = dateString.split("-").map(Number);
+
+    if (parts.length !== 3 || parts.some(Number.isNaN)) {
+        return null;
+    }
+
+    const [year, month, day] = parts;
+
+    const date = new Date(year, month - 1, day);
+
+    // Reject invalid dates.
+    if (
+        date.getFullYear() !== year ||
+        date.getMonth() !== month - 1 ||
+        date.getDate() !== day
+    ) {
+        return null;
+    }
+
+    return date;
+}
+
+// Format date for display.
+function formatDueDate(dateString) {
+    const date = parseLocalDate(dateString);
+
+    if (!date) return "";
+
+    return date.toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric"
+    });
+}
+
+// Create deadline information for a task card.
+function createDueDateElement(task) {
+    if (!task.due_date) return null;
+
+    const deadline = document.createElement("p");
+    deadline.className = "due-date";
+
+    const formattedDate = formatDueDate(task.due_date);
+
+    if (!formattedDate) return null;
+
+    const dueDate = parseLocalDate(task.due_date);
+    const today = parseLocalDate(getLocalDateString());
+
+    const millisecondsPerDay = 24 * 60 * 60 * 1000;
+
+    const daysUntilDue = Math.round(
+        (dueDate.getTime() - today.getTime()) / millisecondsPerDay
+    );
+
+    if (task.completed) {
+        deadline.classList.add("completed-deadline");
+        deadline.textContent = `Deadline: ${formattedDate}`;
+    } else if (daysUntilDue < 0) {
+        deadline.classList.add("overdue");
+        deadline.textContent = `⚠ Overdue · ${formattedDate}`;
+    } else if (daysUntilDue === 0) {
+        deadline.classList.add("due-today");
+        deadline.textContent = `● Due today · ${formattedDate}`;
+    } else if (daysUntilDue <= 3) {
+        deadline.classList.add("upcoming");
+        deadline.textContent = `◷ Due in ${daysUntilDue} day(s) · ${formattedDate}`;
+    } else {
+        deadline.classList.add("normal-deadline");
+        deadline.textContent = `Due: ${formattedDate}`;
+    }
+
+    return deadline;
+}
+
+// ---------------- RENDER TASKS ----------------
+
+function renderTasks() {
+
+    // Update dashboard statistics.
     document.getElementById("totalCount").textContent = tasks.length;
+
     document.getElementById("pendingCount").textContent =
         tasks.filter((task) => !task.completed).length;
+
     document.getElementById("completedCount").textContent =
         tasks.filter((task) => task.completed).length;
 
+    // Apply status filter, search and priority filter.
+    const visibleTasks = tasks.filter((task) => {
+
+        const matchesFilter =
+            currentFilter === "all" ||
+            (currentFilter === "pending" && !task.completed) ||
+            (currentFilter === "completed" && task.completed);
+
+        const matchesSearch = task.title
+            .toLowerCase()
+            .includes(currentSearch);
+
+        const matchesPriority =
+            currentPriority === "all" ||
+            task.priority.toLowerCase() === currentPriority;
+
+        return matchesFilter && matchesSearch && matchesPriority;
+    });
+
     taskList.replaceChildren();
 
+    // Empty state.
     if (visibleTasks.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
 
-    const icon = document.createElement("div");
-    icon.className = "empty-icon";
-    icon.textContent = currentFilter === "completed" ? "✓" : "📝";
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
 
-    const heading = document.createElement("h3");
-    heading.textContent =
-        currentFilter === "pending"
-            ? "All caught up!"
-            : currentFilter === "completed"
-            ? "No completed tasks yet"
-            : "Your workspace is empty";
+        const icon = document.createElement("div");
+        icon.className = "empty-icon";
 
-    const message = document.createElement("p");
-    message.textContent =
-        currentFilter === "pending"
-            ? "You have no pending tasks. Great work!"
-            : currentFilter === "completed"
-            ? "Complete a task and it will appear here."
-            : "Start organizing your day by adding your first task.";
+        const heading = document.createElement("h3");
+        const message = document.createElement("p");
 
-    empty.append(icon, heading, message);
-    taskList.appendChild(empty);
-    return;
-}
+        if (currentSearch) {
+            icon.textContent = "🔍";
+            heading.textContent = "No matching tasks found";
+            message.textContent =
+                `We couldn't find any tasks matching "${taskSearch.value}".`;
+        } else if (currentPriority !== "all") {
+            icon.textContent = "🎯";
+            heading.textContent = `No ${currentPriority} priority tasks`;
+            message.textContent =
+                "Try selecting another priority to see more tasks.";
+        } else {
+            icon.textContent =
+                currentFilter === "completed" ? "✓" : "📝";
 
+            heading.textContent =
+                currentFilter === "pending"
+                    ? "All caught up!"
+                    : currentFilter === "completed"
+                    ? "No completed tasks yet"
+                    : "Your workspace is empty";
+
+            message.textContent =
+                currentFilter === "pending"
+                    ? "You have no pending tasks. Great work!"
+                    : currentFilter === "completed"
+                    ? "Complete a task and it will appear here."
+                    : "Start organizing your day by adding your first task.";
+        }
+
+        empty.append(icon, heading, message);
+        taskList.appendChild(empty);
+
+        return;
+    }
+
+    // Render visible task cards.
     visibleTasks.forEach((task) => {
+
         const card = document.createElement("article");
         card.className = `task-card${task.completed ? " done" : ""}`;
 
+        // Checkbox.
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = task.completed;
         checkbox.setAttribute("aria-label", `Complete ${task.title}`);
 
         checkbox.addEventListener("change", () => {
-            updateTask(task, { completed: checkbox.checked });
+            updateTask(task, {
+                completed: checkbox.checked
+            });
         });
 
+        // Task information.
         const info = document.createElement("div");
         info.className = "task-info";
 
@@ -461,35 +654,108 @@ function renderTasks() {
         title.textContent = task.title;
 
         const status = document.createElement("p");
-        status.textContent = task.completed ? "Completed" : "In progress";
+        status.textContent = task.completed
+            ? "Completed"
+            : "In progress";
 
         info.append(title, status);
 
+        // Deadline information.
+        const deadline = createDueDateElement(task);
+
+        if (deadline) {
+            info.appendChild(deadline);
+
+            if (
+                deadline.classList.contains("overdue") &&
+                !task.completed
+            ) {
+                card.classList.add("overdue-task");
+            }
+        }
+
+        // Priority.
         const priority = document.createElement("span");
         priority.className = `priority ${task.priority}`;
         priority.textContent = task.priority;
 
-        
-    const editButton = document.createElement("button");
-editButton.className = "edit-btn";
-editButton.textContent = "Edit";
+        // Edit button.
+        const editButton = document.createElement("button");
+        editButton.className = "edit-btn";
+        editButton.textContent = "Edit";
 
-editButton.addEventListener("click", () => {
-    openEditModal(task);
-});
+        editButton.addEventListener("click", () => {
+            openEditModal(task);
+        });
 
-    const deleteButton = document.createElement("button");
-    deleteButton.className = "delete-btn";
-    deleteButton.textContent = "×";
-    deleteButton.setAttribute("aria-label", `Delete ${task.title}`);
+        // Delete button.
+        const deleteButton = document.createElement("button");
+        deleteButton.className = "delete-btn";
+        deleteButton.textContent = "×";
 
-    deleteButton.addEventListener("click", () => {
-        deleteTask(task.id);
-    });
-        card.append(checkbox, info, priority,editButton, deleteButton);
+        deleteButton.setAttribute(
+            "aria-label",
+            `Delete ${task.title}`
+        );
+
+        deleteButton.addEventListener("click", () => {
+            deleteTask(task.id);
+        });
+
+        card.append(
+            checkbox,
+            info,
+            priority,
+            editButton,
+            deleteButton
+        );
+
         taskList.appendChild(card);
     });
 }
+
+// ---------------- LOGOUT ----------------
+
+function logout() {
+    localStorage.removeItem("taskflow_token");
+    authToken = null;
+
+    localStorage.removeItem("taskflow_username");
+    currentUsername = "";
+
+    tasks = [];
+    currentSearch = "";
+    currentFilter = "all";
+    currentPriority = "all";
+
+    taskSearch.value = "";
+
+    if (priorityFilter) {
+        priorityFilter.value = "all";
+    }
+
+    taskForm.reset();
+    taskForm.classList.add("hidden");
+
+    taskList.replaceChildren();
+
+    closeEditModal();
+    hideMessage();
+
+    document.querySelectorAll(".nav-item").forEach((item) => {
+        item.classList.toggle("active", item.dataset.filter === "all");
+    });
+
+    dashboard.classList.add("hidden");
+    authSection.classList.remove("hidden");
+
+    authForm.reset();
+    showAuthMessage("You have been logged out.");
+}
+
+document.getElementById("logoutBtn").addEventListener("click", logout);
+
+// ---------------- INITIALIZE APP ----------------
 
 async function initializeApp() {
     if (authToken) {
@@ -502,22 +768,3 @@ async function initializeApp() {
 }
 
 initializeApp();
-
-function logout() {
-    localStorage.removeItem("taskflow_token");
-    authToken = null;
-    localStorage.removeItem("taskflow_username");
-    currentUsername = "";
-
-    tasks = [];
-    taskList.replaceChildren();
-
-    dashboard.classList.add("hidden");
-    authSection.classList.remove("hidden");
-
-    authForm.reset();
-    hideMessage();
-    showAuthMessage("You have been logged out.");
-}
-
-document.getElementById("logoutBtn").addEventListener("click", logout);

@@ -1,28 +1,36 @@
-
 from contextlib import asynccontextmanager
-
-from Backend.auth import get_current_user
-from Backend.models import User
-
-from fastapi import status
-from fastapi.security import OAuth2PasswordRequestForm
-
-from Backend.auth import verify_password, create_access_token
-from Backend.user_schemas import TokenResponse
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import status
+from fastapi.security import OAuth2PasswordRequestForm
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from Backend.database import engine, get_db, DATABASE_URL
-from Backend.models import Base, Task
-from Backend.schemas import TaskCreate, TaskUpdate, TaskResponse
+from Backend.auth import (
+    get_current_user,
+    verify_password,
+    create_access_token,
+    hash_password
+)
 
-from Backend.models import User
-from Backend.user_schemas import UserCreate, UserResponse
-from Backend.auth import hash_password
+from Backend.database import engine, get_db, DATABASE_URL
+
+from Backend.models import Base, Task, User
+
+from Backend.schemas import (
+    TaskCreate,
+    TaskUpdate,
+    TaskResponse
+)
+
+from Backend.user_schemas import (
+    TokenResponse,
+    UserCreate,
+    UserResponse
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -75,6 +83,10 @@ def health_check(db: Session = Depends(get_db)):
             status_code=503,
             detail="Database connection failed"
         )
+
+
+# ---------------- AUTHENTICATION ----------------
+
 @app.post(
     "/auth/register",
     status_code=201,
@@ -116,7 +128,6 @@ def register_user(
         raise
 
 
-    
 @app.post("/auth/login", response_model=TokenResponse)
 def login_user(
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -147,6 +158,8 @@ def login_user(
     }
 
 
+# ---------------- GET TASKS ----------------
+
 @app.get("/tasks", response_model=list[TaskResponse])
 def get_tasks(
     db: Session = Depends(get_db),
@@ -159,6 +172,8 @@ def get_tasks(
         .all()
     )
 
+
+# ---------------- CREATE TASK ----------------
 
 @app.post(
     "/tasks",
@@ -182,6 +197,7 @@ def create_task(
         title=title,
         priority=task.priority,
         completed=task.completed,
+        due_date=task.due_date,
         owner_id=current_user.id
     )
 
@@ -189,11 +205,15 @@ def create_task(
         db.add(new_task)
         db.commit()
         db.refresh(new_task)
+
         return new_task
+
     except Exception:
         db.rollback()
         raise
 
+
+# ---------------- UPDATE TASK ----------------
 
 @app.put("/tasks/{task_id}", response_model=TaskResponse)
 def update_task(
@@ -221,15 +241,20 @@ def update_task(
     task.title = title
     task.priority = updated.priority
     task.completed = updated.completed
+    task.due_date = updated.due_date
 
     try:
         db.commit()
         db.refresh(task)
+
         return task
+
     except Exception:
         db.rollback()
         raise
 
+
+# ---------------- DELETE TASK ----------------
 
 @app.delete("/tasks/{task_id}")
 def delete_task(
@@ -253,6 +278,7 @@ def delete_task(
             "message": "Task deleted successfully",
             "id": task_id
         }
+
     except Exception:
         db.rollback()
         raise
