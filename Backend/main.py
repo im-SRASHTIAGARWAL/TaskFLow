@@ -1,8 +1,8 @@
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from sqlalchemy.orm import Session
@@ -16,7 +16,6 @@ from Backend.auth import (
 )
 
 from Backend.database import engine, get_db, DATABASE_URL
-
 from Backend.models import Base, Task, User
 
 from Backend.schemas import (
@@ -30,6 +29,16 @@ from Backend.user_schemas import (
     UserCreate,
     UserResponse
 )
+
+
+VALID_PRIORITIES = ["Low", "Medium", "High"]
+
+VALID_CATEGORIES = [
+    "Study",
+    "Work",
+    "Personal",
+    "Projects"
+]
 
 
 @asynccontextmanager
@@ -190,14 +199,18 @@ def create_task(
     if not title:
         raise HTTPException(422, "Title cannot be empty")
 
-    if task.priority not in ["Low", "Medium", "High"]:
+    if task.priority not in VALID_PRIORITIES:
         raise HTTPException(400, "Invalid priority")
+
+    if task.category not in VALID_CATEGORIES:
+        raise HTTPException(400, "Invalid category")
 
     new_task = Task(
         title=title,
         priority=task.priority,
         completed=task.completed,
         due_date=task.due_date,
+        category=task.category,
         owner_id=current_user.id
     )
 
@@ -235,13 +248,22 @@ def update_task(
     if not title:
         raise HTTPException(422, "Title cannot be empty")
 
-    if updated.priority not in ["Low", "Medium", "High"]:
+    if updated.priority not in VALID_PRIORITIES:
         raise HTTPException(400, "Invalid priority")
+
+    if (
+        updated.category is not None
+        and updated.category not in VALID_CATEGORIES
+    ):
+        raise HTTPException(400, "Invalid category")
 
     task.title = title
     task.priority = updated.priority
     task.completed = updated.completed
     task.due_date = updated.due_date
+
+    if updated.category is not None:
+        task.category = updated.category
 
     try:
         db.commit()

@@ -1,4 +1,5 @@
-from datetime import date
+
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -8,6 +9,7 @@ class TaskCreate(BaseModel):
     priority: str = "Medium"
     completed: bool = False
     due_date: date | None = None
+    category: str = Field(default="Personal", max_length=30)
 
 
 class TaskUpdate(BaseModel):
@@ -15,6 +17,7 @@ class TaskUpdate(BaseModel):
     priority: str = "Medium"
     completed: bool = False
     due_date: date | None = None
+    category: str | None = Field(default=None, max_length=30)
 
 
 class TaskResponse(BaseModel):
@@ -25,3 +28,5 @@ class TaskResponse(BaseModel):
     priority: str
     completed: bool
     due_date: date | None = None
+    category: str
+    created_at: datetime

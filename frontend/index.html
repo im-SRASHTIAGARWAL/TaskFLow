@@ -8,10 +8,9 @@
     <link rel="stylesheet" href="style.css">
     <script src="script.js" defer></script>
 </head>
-
 <body>
 
-    <!-- Authentication Section -->
+    <!-- AUTHENTICATION -->
     <section id="authSection" class="auth-section">
         <div class="auth-card">
             <h2 class="logo">TaskFlow<span>.</span></h2>
@@ -19,30 +18,10 @@
             <p id="authSubtitle">Login to access your workspace.</p>
 
             <form id="authForm">
-                <input
-                    id="authUsername"
-                    type="text"
-                    placeholder="Username"
-                    required
-                >
-
-                <input
-                    id="authEmail"
-                    type="email"
-                    placeholder="Email address"
-                    class="hidden"
-                >
-
-                <input
-                    id="authPassword"
-                    type="password"
-                    placeholder="Password"
-                    required
-                >
-
-                <button id="authSubmitBtn" type="submit" class="primary-btn">
-                    Login
-                </button>
+                <input id="authUsername" type="text" placeholder="Username" required>
+                <input id="authEmail" type="email" placeholder="Email address" class="hidden">
+                <input id="authPassword" type="password" placeholder="Password" required>
+                <button id="authSubmitBtn" type="submit" class="primary-btn">Login</button>
             </form>
 
             <p id="authMessage" role="status"></p>
@@ -54,26 +33,25 @@
         </div>
     </section>
 
-    <!-- Dashboard -->
+    <!-- DASHBOARD -->
     <div class="app hidden" id="dashboard">
 
-        <!-- Sidebar -->
         <aside class="sidebar">
             <h2 class="logo">TaskFlow<span>.</span></h2>
 
             <p class="menu-label">WORKSPACE</p>
 
-            <button class="nav-item active" data-filter="all">
-                ▦ All Tasks
-            </button>
+            <button class="nav-item active" data-filter="all">▦ All Tasks</button>
+            <button class="nav-item" data-filter="pending">◷ Pending</button>
+            <button class="nav-item" data-filter="completed">✓ Completed</button>
 
-            <button class="nav-item" data-filter="pending">
-                ◷ Pending
-            </button>
+            <p class="menu-label">CATEGORIES</p>
 
-            <button class="nav-item" data-filter="completed">
-                ✓ Completed
-            </button>
+            <button class="nav-item category-nav" data-category="all">All Categories</button>
+            <button class="nav-item category-nav" data-category="Study">📚 Study</button>
+            <button class="nav-item category-nav" data-category="Work">💼 Work</button>
+            <button class="nav-item category-nav" data-category="Personal">🏠 Personal</button>
+            <button class="nav-item category-nav" data-category="Projects">🚀 Projects</button>
 
             <div class="sidebar-note">
                 <p>Small steps.</p>
@@ -81,10 +59,9 @@
             </div>
         </aside>
 
-        <!-- Main Content -->
         <main class="main">
 
-            <!-- Topbar -->
+            <!-- TOPBAR -->
             <header class="topbar">
                 <div>
                     <p class="eyebrow">YOUR WORKSPACE</p>
@@ -99,15 +76,15 @@
                 </div>
             </header>
 
-            <!-- Statistics -->
+            <!-- ANALYTICS -->
             <section class="stats">
                 <article class="stat-card">
-                    <p>Total tasks</p>
+                    <p>Total Tasks</p>
                     <h2 id="totalCount">0</h2>
                 </article>
 
                 <article class="stat-card">
-                    <p>In progress</p>
+                    <p>In Progress</p>
                     <h2 id="pendingCount">0</h2>
                 </article>
 
@@ -115,23 +92,26 @@
                     <p>Completed</p>
                     <h2 id="completedCount">0</h2>
                 </article>
+
+                <article class="stat-card overdue-stat">
+                    <p>Overdue Tasks</p>
+                    <h2 id="overdueCount">0</h2>
+                </article>
             </section>
 
-            <!-- Task Section -->
+            <!-- TASK SECTION -->
             <section class="task-section">
 
                 <div class="section-heading">
                     <div>
-                        <h2>My task list</h2>
+                        <h2>My Task List</h2>
                         <p>Keep your priorities clear.</p>
                     </div>
 
-                    <button id="addTaskBtn" class="primary-btn">
-                        + Add Task
-                    </button>
+                    <button id="addTaskBtn" class="primary-btn">+ Add Task</button>
                 </div>
 
-                <!-- Add Task Form -->
+                <!-- ADD TASK FORM -->
                 <form id="taskForm" class="task-form hidden">
 
                     <input
@@ -148,32 +128,31 @@
                         <option value="Low">Low priority</option>
                     </select>
 
+                    <select id="taskCategory" required>
+                        <option value="Personal">Personal</option>
+                        <option value="Study">Study</option>
+                        <option value="Work">Work</option>
+                        <option value="Projects">Projects</option>
+                    </select>
+
                     <div class="date-input-group">
                         <label for="taskDueDate">Due Date (Optional)</label>
-                        <input
-                            id="taskDueDate"
-                            type="date"
-                            aria-label="Task due date"
-                        >
+                        <input id="taskDueDate" type="date">
                     </div>
 
-                    <button class="primary-btn" type="submit">
-                        Save Task
-                    </button>
-
+                    <button class="primary-btn" type="submit">Save Task</button>
                 </form>
 
-                <!-- Search and Task Controls -->
+                <!-- TASK FILTERS -->
                 <div class="task-tools">
 
                     <div class="search-box">
                         <span class="search-icon" aria-hidden="true">⌕</span>
-
                         <input
                             type="search"
                             id="taskSearch"
                             placeholder="Search tasks by title..."
-                            aria-label="Search tasks by title"
+                            aria-label="Search tasks"
                             autocomplete="off"
                         >
                     </div>
@@ -185,13 +164,66 @@
                         <option value="low">Low Priority</option>
                     </select>
 
+                    <select id="categoryFilter" class="priority-filter">
+                        <option value="all">All Categories</option>
+                        <option value="Study">Study</option>
+                        <option value="Work">Work</option>
+                        <option value="Personal">Personal</option>
+                        <option value="Projects">Projects</option>
+                    </select>
+
+                    <select id="sortFilter" class="priority-filter">
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                        <option value="due_asc">Due Date: Earliest</option>
+                        <option value="due_desc">Due Date: Latest</option>
+                        <option value="priority">Priority: High to Low</option>
+                    </select>
+
                 </div>
 
-                <!-- Notifications -->
-                <p id="appMessage" class="app-message hidden" role="status"></p>
+                <!-- VIEW SWITCHER -->
+                <div class="view-controls">
+                    <button id="listViewBtn" class="view-btn active" type="button">
+                        List View
+                    </button>
 
-                <!-- Task List -->
-                <div id="taskList" class="task-list"></div>
+                    <button id="calendarViewBtn" class="view-btn" type="button">
+                        Calendar View
+                    </button>
+                </div>
+
+                <!-- TASK LIST -->
+                <div id="taskView">
+                    <div id="taskList" class="task-list"></div>
+                </div>
+
+                <!-- CALENDAR -->
+                <section id="calendarView" class="calendar-section hidden">
+
+                    <div class="calendar-header">
+                        <button id="prevCalendarBtn" type="button">←</button>
+
+                        <h2 id="calendarTitle">November 2026</h2>
+
+                        <button id="nextCalendarBtn" type="button">→</button>
+
+                        <div class="calendar-mode">
+                            <button id="monthViewBtn" type="button" class="active">
+                                Month
+                            </button>
+
+                            <button id="weekViewBtn" type="button">
+                                Week
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="calendarGrid" class="calendar-grid"></div>
+
+                </section>
+
+                <p id="appMessage" class="app-message hidden" role="status"></p>
 
             </section>
 
@@ -202,7 +234,7 @@
         </main>
     </div>
 
-    <!-- Edit Task Modal -->
+    <!-- EDIT TASK MODAL -->
     <div id="editModal" class="modal hidden">
         <div class="modal-content">
 
@@ -212,12 +244,7 @@
             <form id="editTaskForm">
 
                 <label for="editTitle">Task Title</label>
-                <input
-                    type="text"
-                    id="editTitle"
-                    required
-                    maxlength="200"
-                >
+                <input type="text" id="editTitle" required maxlength="200">
 
                 <label for="editPriority">Priority</label>
                 <select id="editPriority" required>
@@ -226,23 +253,20 @@
                     <option value="High">High</option>
                 </select>
 
+                <label for="editCategory">Category</label>
+                <select id="editCategory" required>
+                    <option value="Study">Study</option>
+                    <option value="Work">Work</option>
+                    <option value="Personal">Personal</option>
+                    <option value="Projects">Projects</option>
+                </select>
+
                 <label for="editDueDate">Due Date (Optional)</label>
-                <input
-                    type="date"
-                    id="editDueDate"
-                    aria-label="Edit task due date"
-                >
+                <input type="date" id="editDueDate">
 
                 <div class="modal-actions">
-
-                    <button type="button" id="cancelEditBtn">
-                        Cancel
-                    </button>
-
-                    <button type="submit" class="primary-btn">
-                        Save Changes
-                    </button>
-
+                    <button type="button" id="cancelEditBtn">Cancel</button>
+                    <button type="submit" class="primary-btn">Save Changes</button>
                 </div>
 
             </form>

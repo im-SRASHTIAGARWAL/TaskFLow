@@ -1,6 +1,13 @@
 from sqlalchemy import (
-    Column, Integer, BigInteger, String,
-    Boolean, ForeignKey, Date
+    Column,
+    Integer,
+    BigInteger,
+    String,
+    Boolean,
+    ForeignKey,
+    Date,
+    DateTime,
+    func
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -33,10 +40,38 @@ class Task(Base):
     )
 
     title = Column(String(200), nullable=False)
-    priority = Column(String(10), default="Medium", nullable=False)
-    completed = Column(Boolean, default=False, nullable=False)
+
+    priority = Column(
+        String(10),
+        default="Medium",
+        nullable=False
+    )
+
+    completed = Column(
+        Boolean,
+        default=False,
+        nullable=False
+    )
 
     due_date = Column(Date, nullable=True)
 
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    category = Column(
+        String(30),
+        default="Personal",
+        server_default="Personal",
+        nullable=False
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    owner_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=True
+    )
+
     owner = relationship("User", back_populates="tasks")
