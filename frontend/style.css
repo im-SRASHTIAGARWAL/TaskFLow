@@ -1197,7 +1197,253 @@ button:disabled {
         font-size: 10px;
     }
 
+
     .task-card {
         gap: 9px;
+    }
+}
+
+/* =========================================
+   TASKFLOW PHASE 2 - REMINDER UI
+========================================= */
+
+/* Notification bell */
+
+.notification-wrapper {
+    position: relative;
+}
+
+.notification-bell {
+    position: relative;
+    width: 42px;
+    height: 42px;
+    border: 1px solid #e2e5ef;
+    border-radius: 10px;
+    background: #fff;
+    font-size: 19px;
+}
+
+.notification-bell:hover {
+    background: #f0edff;
+}
+
+.notification-badge {
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    min-width: 19px;
+    height: 19px;
+    padding: 2px 5px;
+    border-radius: 20px;
+    background: #ef4444;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+/* Notification dropdown */
+
+.notification-panel {
+    position: absolute;
+    top: 52px;
+    right: 0;
+    width: 340px;
+    max-height: 420px;
+    overflow-y: auto;
+    background: white;
+    border: 1px solid #eceef5;
+    border-radius: 14px;
+    box-shadow: 0 12px 35px rgba(32, 36, 58, 0.15);
+    z-index: 1100;
+}
+
+.notification-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid #eceef5;
+}
+
+.notification-header h3 {
+    font-size: 15px;
+}
+
+.notification-header button {
+    border: 0;
+    background: transparent;
+    color: #6c5ce7;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.notification-item {
+    padding: 14px 16px;
+    border-bottom: 1px solid #f0f1f6;
+}
+
+.notification-item.unread {
+    background: #f7f5ff;
+}
+
+.notification-item h4 {
+    font-size: 13px;
+    margin-bottom: 5px;
+}
+
+.notification-item p {
+    font-size: 12px;
+    color: #858ba1;
+    line-height: 1.5;
+}
+
+.notification-item small {
+    display: block;
+    margin-top: 7px;
+    color: #9ca3af;
+    font-size: 10px;
+}
+
+.notification-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.notification-actions button {
+    border: 0;
+    background: transparent;
+    color: #6c5ce7;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.notification-actions .delete-notification {
+    color: #dc3545;
+}
+
+.notification-empty {
+    padding: 25px 15px;
+    text-align: center;
+    color: #858ba1;
+    font-size: 13px;
+}
+
+/* Preferences */
+
+.preferences-btn {
+    border: 1px solid #e2e5ef;
+    background: white;
+    color: #6254ce;
+    padding: 10px 13px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.preferences-btn:hover {
+    background: #f0edff;
+}
+
+.preferences-content {
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+#preferencesForm {
+    display: grid;
+    gap: 14px;
+}
+
+#preferencesForm > label:not(.reminder-toggle) {
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+}
+
+#preferencesForm select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #e2e5ef;
+    border-radius: 8px;
+}
+
+.reminder-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+    cursor: pointer;
+}
+
+.reminder-toggle input {
+    width: 17px;
+    height: 17px;
+    accent-color: #6c5ce7;
+}
+
+.permission-status {
+    font-size: 12px;
+    color: #858ba1;
+}
+
+/* Task reminder inputs */
+
+.reminder-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1 1 100%;
+    padding: 14px;
+    background: #f8f7ff;
+    border: 1px solid #e8e4ff;
+    border-radius: 10px;
+}
+
+.reminder-options {
+    display: grid;
+    gap: 8px;
+}
+
+.reminder-options label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+}
+
+.reminder-options input,
+.reminder-options select {
+    width: 100%;
+    padding: 11px;
+    border: 1px solid #e2e5ef;
+    border-radius: 8px;
+    background: white;
+}
+
+.reminder-options input:focus,
+.reminder-options select:focus {
+    outline: none;
+    border-color: #6c5ce7;
+}
+
+@media (max-width: 480px) {
+    .notification-panel {
+        position: fixed;
+        top: 85px;
+        left: 12px;
+        right: 12px;
+        width: auto;
+        max-height: 65vh;
+    }
+
+    .preferences-btn {
+        padding: 9px;
+        font-size: 11px;
+    }
+
+    .topbar-actions {
+        flex-wrap: wrap;
     }
 }

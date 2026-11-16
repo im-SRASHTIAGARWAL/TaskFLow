@@ -71,6 +71,41 @@ const editCategory = document.getElementById("editCategory");
 const editDueDate = document.getElementById("editDueDate");
 const cancelEditBtn = document.getElementById("cancelEditBtn");
 
+
+// Phase 2 - Reminder and notification elements
+
+const notificationBell = document.getElementById("notificationBell");
+const notificationBadge = document.getElementById("notificationBadge");
+const notificationPanel = document.getElementById("notificationPanel");
+const notificationList = document.getElementById("notificationList");
+const markAllReadBtn = document.getElementById("markAllReadBtn");
+
+const preferencesBtn = document.getElementById("preferencesBtn");
+const preferencesModal = document.getElementById("preferencesModal");
+const preferencesForm = document.getElementById("preferencesForm");
+const closePreferencesBtn = document.getElementById("closePreferencesBtn");
+
+const globalRemindersEnabled = document.getElementById("globalRemindersEnabled");
+const defaultReminderMinutes = document.getElementById("defaultReminderMinutes");
+const browserNotificationsEnabled = document.getElementById("browserNotificationsEnabled");
+const browserPermissionStatus = document.getElementById("browserPermissionStatus");
+
+const taskReminderEnabled = document.getElementById("taskReminderEnabled");
+const taskReminderOptions = document.getElementById("taskReminderOptions");
+const taskReminderAt = document.getElementById("taskReminderAt");
+const taskReminderPreset = document.getElementById("taskReminderPreset");
+
+const editReminderEnabled = document.getElementById("editReminderEnabled");
+const editReminderOptions = document.getElementById("editReminderOptions");
+const editReminderAt = document.getElementById("editReminderAt");
+
+const API_BASE_URL = API_URL.replace(/\/tasks$/, "");
+
+let notificationPollingTimer = null;
+let knownNotificationIds = null;
+let userPreferences = null;
+
+
 // Calendar
 const taskView = document.getElementById("taskView");
 const calendarViewElement = document.getElementById("calendarView");
@@ -197,7 +232,11 @@ async function authenticate(event) {
         updateUserDetails();
 
         showDashboard();
+
         await loadTasks();
+        await loadPreferences();
+        knownNotificationIds = null;
+        startNotificationPolling();
 
     } catch (error) {
         showAuthMessage(error.message);
@@ -290,6 +329,467 @@ async function apiRequest(url, options = {}) {
     return response;
 }
 
+// =========================================
+// PHASE 2 - REMINDER AND NOTIFICATION LOGIC
+// =========================================
+
+// Convert a local datetime input value to UTC ISO.
+function localDateTimeToISO(value) {
+    if (!value) return null;
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+
+    return date.toISOString();
+}
+
+
+// Convert a UTC ISO datetime to local datetime input format.
+function isoToLocalDateTime(value) {
+    if (!value) return "";
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return "";
+    }
+
+    const localOffset = date.getTimezoneOffset() * 60000;
+
+    return new Date(date.getTime() - localOffset)
+        .toISOString()
+        .slice(0, 16);
+}
+
+
+// Generate a reminder datetime from the task due date.
+// Due date is treated as 9:00 AM local time.
+function calculatePresetReminder(dueDate, minutesBefore) {
+    if (!dueDate) return null;
+
+    const dueDateTime = new Date(`${dueDate}T09:00`);
+
+    if (Number.isNaN(dueDateTime.getTime())) {
+        return null;
+    }
+
+    dueDateTime.setMinutes(
+        dueDateTime.getMinutes() - Number(minutesBefore)
+    );
+
+    return isoToLocalDateTime(dueDateTime.toISOString());
+}
+
+
+// ---------------- NOTIFICATION CENTER ----------------
+
+async function loadNotifications(showBrowserAlerts = false) {
+    if (!authToken) return;
+
+    try {
+        const [notificationsResponse, countResponse] = await Promise.all([
+            apiRequest(`${API_BASE_URL}/notifications?limit=30`),
+            apiRequest(`${API_BASE_URL}/notifications/unread-count`)
+        ]);
+
+        const notifications = await notificationsResponse.json();
+        const countData = await countResponse.json();
+
+        notificationBadge.textContent = countData.unread_count;
+
+        notificationBadge.classList.toggle(
+            "hidden",
+            countData.unread_count === 0
+        );
+
+        renderNotifications(notifications);
+
+        // First fetch establishes baseline. Do not alert old notifications.
+        if (knownNotificationIds === null) {
+            knownNotificationIds = new Set(
+                notifications.map(item => item.id)
+            );
+        } else {
+            for (const item of notifications) {
+                if (!knownNotificationIds.has(item.id)) {
+                    if (
+                        showBrowserAlerts &&
+                        userPreferences?.browser_notifications_enabled &&
+                        "Notification" in window &&
+                        Notification.permission === "granted"
+                    ) {
+                        showBrowserNotification(item);
+                    }
+
+                    knownNotificationIds.add(item.id);
+                }
+            }
+        }
+
+    } catch (error) {
+        console.error("Notification loading error:", error);
+    }
+}
+
+
+function renderNotifications(notifications) {
+    notificationList.replaceChildren();
+
+    if (!notifications.length) {
+        const empty = document.createElement("p");
+        empty.className = "notification-empty";
+        empty.textContent = "No notifications yet.";
+
+        notificationList.appendChild(empty);
+        return;
+    }
+
+    notifications.forEach(item => {
+        const card = document.createElement("article");
+
+        card.className = `notification-item${item.is_read ? "" : " unread"}`;
+
+        const title = document.createElement("h4");
+        title.textContent = item.title;
+
+        const message = document.createElement("p");
+        message.textContent = item.message;
+
+        const date = document.createElement("small");
+        date.textContent = new Date(item.created_at).toLocaleString("en-IN");
+
+        const actions = document.createElement("div");
+        actions.className = "notification-actions";
+
+        if (!item.is_read) {
+            const readButton = document.createElement("button");
+            readButton.type = "button";
+            readButton.textContent = "Mark as read";
+
+            readButton.addEventListener("click", () => {
+                markNotificationRead(item.id);
+            });
+
+            actions.appendChild(readButton);
+        }
+
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "delete-notification";
+        deleteButton.textContent = "Delete";
+
+        deleteButton.addEventListener("click", () => {
+            deleteNotification(item.id);
+        });
+
+        actions.appendChild(deleteButton);
+
+        card.append(title, message, date, actions);
+        notificationList.appendChild(card);
+    });
+}
+
+
+async function markNotificationRead(notificationId) {
+    try {
+        await apiRequest(
+            `${API_BASE_URL}/notifications/${notificationId}/read`,
+            { method: "PATCH" }
+        );
+
+        await loadNotifications();
+
+    } catch (error) {
+        showMessage(error.message, "error");
+    }
+}
+
+
+async function markAllNotificationsRead() {
+    try {
+        await apiRequest(
+            `${API_BASE_URL}/notifications/read-all`,
+            { method: "PATCH" }
+        );
+
+        await loadNotifications();
+
+    } catch (error) {
+        showMessage(error.message, "error");
+    }
+}
+
+
+async function deleteNotification(notificationId) {
+    try {
+        await apiRequest(
+            `${API_BASE_URL}/notifications/${notificationId}`,
+            { method: "DELETE" }
+        );
+
+        await loadNotifications();
+
+    } catch (error) {
+        showMessage(error.message, "error");
+    }
+}
+
+
+// ---------------- BROWSER NOTIFICATIONS ----------------
+
+function showBrowserNotification(item) {
+    if (!("Notification" in window)) return;
+
+    const browserAlert = new Notification(item.title, {
+        body: item.message,
+        tag: `taskflow-notification-${item.id}`
+    });
+
+    browserAlert.onclick = () => {
+        window.focus();
+        notificationPanel.classList.remove("hidden");
+        browserAlert.close();
+    };
+}
+
+
+// ---------------- USER PREFERENCES ----------------
+
+async function loadPreferences() {
+    try {
+        const response = await apiRequest(`${API_BASE_URL}/preferences`);
+
+        userPreferences = await response.json();
+
+        globalRemindersEnabled.checked =
+            userPreferences.reminders_enabled;
+
+        defaultReminderMinutes.value =
+            String(userPreferences.default_reminder_minutes);
+
+        browserNotificationsEnabled.checked =
+            userPreferences.browser_notifications_enabled;
+
+        updateBrowserPermissionStatus();
+
+    } catch (error) {
+        console.error("Preference loading error:", error);
+    }
+}
+
+
+function updateBrowserPermissionStatus() {
+    if (!("Notification" in window)) {
+        browserPermissionStatus.textContent =
+            "This browser does not support desktop notifications.";
+        return;
+    }
+
+    browserPermissionStatus.textContent =
+        `Browser permission: ${Notification.permission}`;
+}
+
+
+async function savePreferences(event) {
+    event.preventDefault();
+
+    let browserEnabled = browserNotificationsEnabled.checked;
+
+    if (
+        browserEnabled &&
+        "Notification" in window &&
+        Notification.permission === "default"
+    ) {
+        const permission = await Notification.requestPermission();
+
+        if (permission !== "granted") {
+            browserEnabled = false;
+            browserNotificationsEnabled.checked = false;
+        }
+    }
+
+    if (
+        browserEnabled &&
+        (!("Notification" in window) ||
+        Notification.permission !== "granted")
+    ) {
+        browserEnabled = false;
+        browserNotificationsEnabled.checked = false;
+    }
+
+    const payload = {
+        reminders_enabled: globalRemindersEnabled.checked,
+        default_reminder_minutes: Number(defaultReminderMinutes.value),
+        browser_notifications_enabled: browserEnabled
+    };
+
+    try {
+        const response = await apiRequest(`${API_BASE_URL}/preferences`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        });
+
+        userPreferences = await response.json();
+
+        preferencesModal.classList.add("hidden");
+
+        updateBrowserPermissionStatus();
+
+        showMessage("Notification settings saved.", "success");
+
+    } catch (error) {
+        showMessage(error.message, "error");
+    }
+}
+
+
+// ---------------- POLLING ----------------
+
+function startNotificationPolling() {
+    stopNotificationPolling();
+
+    loadNotifications(false);
+
+    notificationPollingTimer = setInterval(() => {
+        loadNotifications(true);
+    }, 30000);
+}
+
+
+function stopNotificationPolling() {
+    if (notificationPollingTimer !== null) {
+        clearInterval(notificationPollingTimer);
+        notificationPollingTimer = null;
+    }
+}
+
+
+// ---------------- UI EVENTS ----------------
+
+notificationBell.addEventListener("click", () => {
+    notificationPanel.classList.toggle("hidden");
+
+    if (!notificationPanel.classList.contains("hidden")) {
+        loadNotifications();
+    }
+});
+
+
+markAllReadBtn.addEventListener("click", markAllNotificationsRead);
+
+
+document.addEventListener("click", event => {
+    if (
+        !notificationPanel.contains(event.target) &&
+        !notificationBell.contains(event.target)
+    ) {
+        notificationPanel.classList.add("hidden");
+    }
+});
+
+
+preferencesBtn.addEventListener("click", async () => {
+    await loadPreferences();
+    preferencesModal.classList.remove("hidden");
+});
+
+
+closePreferencesBtn.addEventListener("click", () => {
+    preferencesModal.classList.add("hidden");
+});
+
+
+preferencesModal.addEventListener("click", event => {
+    if (event.target === preferencesModal) {
+        preferencesModal.classList.add("hidden");
+    }
+});
+
+
+preferencesForm.addEventListener("submit", savePreferences);
+
+
+browserNotificationsEnabled.addEventListener("change", () => {
+    if (browserNotificationsEnabled.checked) {
+        if (!("Notification" in window)) {
+            browserNotificationsEnabled.checked = false;
+            updateBrowserPermissionStatus();
+            return;
+        }
+
+        if (Notification.permission === "denied") {
+            browserNotificationsEnabled.checked = false;
+        }
+    }
+
+    updateBrowserPermissionStatus();
+});
+
+
+// ---------------- TASK REMINDER INPUTS ----------------
+
+taskReminderEnabled.addEventListener("change", () => {
+    taskReminderOptions.classList.toggle(
+        "hidden",
+        !taskReminderEnabled.checked
+    );
+
+    taskReminderAt.required = taskReminderEnabled.checked;
+});
+
+
+editReminderEnabled.addEventListener("change", () => {
+    editReminderOptions.classList.toggle(
+        "hidden",
+        !editReminderEnabled.checked
+    );
+
+    editReminderAt.required = editReminderEnabled.checked;
+});
+
+
+taskReminderPreset.addEventListener("change", () => {
+    const minutes = Number(taskReminderPreset.value);
+
+    if (!minutes) return;
+
+    const calculated = calculatePresetReminder(
+        taskDueDate.value,
+        minutes
+    );
+
+    if (!calculated) {
+        showMessage(
+            "Select a due date before using a quick reminder.",
+            "error"
+        );
+
+        taskReminderPreset.value = "custom";
+        return;
+    }
+
+    taskReminderAt.value = calculated;
+});
+
+
+// Recalculate quick reminder when due date changes.
+taskDueDate.addEventListener("change", () => {
+    if (
+        taskReminderPreset.value !== "custom" &&
+        taskReminderEnabled.checked
+    ) {
+        taskReminderPreset.dispatchEvent(
+            new Event("change")
+        );
+    }
+});
+
 
 // ---------------- LOAD TASKS ----------------
 
@@ -345,7 +845,10 @@ taskForm.addEventListener("submit", async (event) => {
         showMessage("Please select a valid category.", "error");
         return;
     }
-
+    if (taskReminderEnabled.checked && !taskReminderAt.value) {
+        showMessage("Please select a reminder date and time.", "error");
+        return;
+    }
     try {
         await apiRequest(API_URL, {
             method: "POST",
@@ -357,7 +860,11 @@ taskForm.addEventListener("submit", async (event) => {
                 priority: taskPriority.value,
                 completed: false,
                 due_date: taskDueDate.value || null,
-                category
+                category,
+                reminder_enabled: taskReminderEnabled.checked,
+                reminder_at: taskReminderEnabled.checked
+                    ? localDateTimeToISO(taskReminderAt.value)
+                    : null
             })
         });
 
@@ -510,6 +1017,17 @@ function openEditModal(task) {
     editCategory.value = task.category || "Personal";
     editDueDate.value = task.due_date || "";
 
+    editReminderEnabled.checked = Boolean(task.reminder_enabled);
+
+    editReminderOptions.classList.toggle(
+        "hidden",
+        !task.reminder_enabled
+    );
+
+    editReminderAt.required = Boolean(task.reminder_enabled);
+
+    editReminderAt.value = isoToLocalDateTime(task.reminder_at);
+
     editModal.classList.remove("hidden");
     editTitle.focus();
 }
@@ -547,6 +1065,10 @@ editTaskForm.addEventListener("submit", async (event) => {
         showMessage("Task title cannot be empty.", "error");
         return;
     }
+    if (editReminderEnabled.checked && !editReminderAt.value) {
+        showMessage("Please select a reminder date and time.", "error");
+        return;
+   }
 
     const taskToUpdate = editingTask;
 
@@ -554,7 +1076,11 @@ editTaskForm.addEventListener("submit", async (event) => {
         title,
         priority,
         category,
-        due_date: dueDate
+        due_date: dueDate,
+        reminder_enabled: editReminderEnabled.checked,
+        reminder_at: editReminderEnabled.checked
+            ? localDateTimeToISO(editReminderAt.value)
+            : null
     });
 
     if (success) {
@@ -1229,6 +1755,15 @@ function createCalendarDay(date, visibleTasks) {
 // ---------------- LOGOUT ----------------
 
 function logout() {
+    stopNotificationPolling();
+    knownNotificationIds = null;
+    userPreferences = null;
+
+    notificationPanel.classList.add("hidden");
+    preferencesModal.classList.add("hidden");
+
+    notificationList.replaceChildren();
+    notificationBadge.classList.add("hidden");
     localStorage.removeItem("taskflow_token");
     authToken = null;
 
@@ -1291,8 +1826,14 @@ document.getElementById("logoutBtn").addEventListener("click", logout);
 async function initializeApp() {
     if (authToken) {
         showDashboard();
+
         await loadTasks();
-    } else {
+        await loadPreferences();
+
+        knownNotificationIds = null;
+        startNotificationPolling();
+    }
+    else {
         authSection.classList.remove("hidden");
         dashboard.classList.add("hidden");
     }

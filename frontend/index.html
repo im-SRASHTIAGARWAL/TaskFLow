@@ -70,9 +70,35 @@
                 </div>
 
                 <div class="topbar-actions">
+
+                    <div class="notification-wrapper">
+                        <button type="button" id="notificationBell" class="notification-bell" aria-label="Open notifications">
+                            🔔
+                            <span id="notificationBadge" class="notification-badge hidden">0</span>
+                        </button>
+
+                        <div id="notificationPanel" class="notification-panel hidden">
+                            <div class="notification-header">
+                                <h3>Notifications</h3>
+                                <button type="button" id="markAllReadBtn">
+                                    Mark all read
+                                </button>
+                            </div>
+
+                            <div id="notificationList" class="notification-list">
+                                <p class="notification-empty">No notifications yet.</p>
+                         </div>
+                        </div>
+                    </div>
+
+                    <button type="button" id="preferencesBtn" class="preferences-btn">
+                        ⚙ Settings
+                    </button>
+
                     <div class="avatar" id="userAvatar">S</div>
                     <span id="displayUsername" class="display-username"></span>
                     <button id="logoutBtn" class="logout-btn">Logout</button>
+
                 </div>
             </header>
 
@@ -136,8 +162,32 @@
                     </select>
 
                     <div class="date-input-group">
+
                         <label for="taskDueDate">Due Date (Optional)</label>
                         <input id="taskDueDate" type="date">
+                    </div>
+                    <div class="reminder-input-group">
+
+                        <label class="reminder-toggle">
+                            <input type="checkbox" id="taskReminderEnabled">
+                            Enable task reminder
+                        </label>
+
+                        <div id="taskReminderOptions" class="reminder-options hidden">
+
+                            <label for="taskReminderAt">Reminder date and time</label>
+
+                            <input type="datetime-local" id="taskReminderAt">
+
+                            <label for="taskReminderPreset">Quick reminder</label>
+
+                                <select id="taskReminderPreset">
+                                    <option value="custom">Custom date and time</option>
+                                    <option value="60">1 hour before</option>
+                                    <option value="1440">1 day before</option>
+                                </select>
+
+                            </div>
                     </div>
 
                     <button class="primary-btn" type="submit">Save Task</button>
@@ -264,6 +314,26 @@
                 <label for="editDueDate">Due Date (Optional)</label>
                 <input type="date" id="editDueDate">
 
+                <div class="reminder-input-group">
+
+    <label class="reminder-toggle">
+        <input type="checkbox" id="editReminderEnabled">
+        Enable task reminder
+    </label>
+
+    <div id="editReminderOptions" class="reminder-options hidden">
+
+        <label for="editReminderAt">Reminder date and time</label>
+
+        <input
+            type="datetime-local"
+            id="editReminderAt"
+        >
+
+    </div>
+
+</div>
+
                 <div class="modal-actions">
                     <button type="button" id="cancelEditBtn">Cancel</button>
                     <button type="submit" class="primary-btn">Save Changes</button>
@@ -273,5 +343,57 @@
         </div>
     </div>
 
+    <!-- PREFERENCES MODAL -->
+<div id="preferencesModal" class="modal hidden">
+
+    <div class="modal-content preferences-content">
+
+        <h2>Notification Settings</h2>
+        <p>Manage how TaskFlow reminds you.</p>
+
+        <form id="preferencesForm">
+
+            <label class="reminder-toggle">
+                <input type="checkbox" id="globalRemindersEnabled">
+                Enable all task reminders
+            </label>
+
+            <label for="defaultReminderMinutes">
+                Default reminder interval
+            </label>
+
+            <select id="defaultReminderMinutes">
+                <option value="5">5 minutes before</option>
+                <option value="15">15 minutes before</option>
+                <option value="30">30 minutes before</option>
+                <option value="60">1 hour before</option>
+                <option value="1440">1 day before</option>
+            </select>
+
+            <label class="reminder-toggle">
+                <input
+                    type="checkbox"
+                    id="browserNotificationsEnabled"
+                >
+                Enable browser notifications
+            </label>
+
+            <p id="browserPermissionStatus" class="permission-status"></p>
+
+            <div class="modal-actions">
+                <button type="button" id="closePreferencesBtn">
+                    Cancel
+                </button>
+
+                <button type="submit" class="primary-btn">
+                    Save Settings
+                </button>
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
 </body>
 </html>
