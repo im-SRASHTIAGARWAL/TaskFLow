@@ -1,7 +1,9 @@
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -16,12 +18,21 @@ from Backend.auth import (
 )
 
 from Backend.database import engine, get_db, DATABASE_URL
-from Backend.models import Base, Task, User
+from Backend.models import (
+    Base,
+    Task,
+    User,
+    Notification,
+    UserPreference
+)
 
 from Backend.schemas import (
     TaskCreate,
     TaskUpdate,
-    TaskResponse
+    TaskResponse,
+    NotificationResponse,
+    UserPreferenceResponse,
+    UserPreferenceUpdate
 )
 
 from Backend.user_schemas import (
@@ -30,6 +41,11 @@ from Backend.user_schemas import (
     UserResponse
 )
 
+from Backend.reminder_scheduler import reminder_scheduler
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 VALID_PRIORITIES = ["Low", "Medium", "High"]
 
@@ -41,10 +57,27 @@ VALID_CATEGORIES = [
 ]
 
 
+# ---------------- LIFESPAN ----------------
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    yield
+
+    scheduler_task = asyncio.create_task(reminder_scheduler())
+
+    logger.info("TaskFlow API started.")
+
+    try:
+        yield
+    finally:
+        scheduler_task.cancel()
+
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            logger.info("Reminder scheduler stopped.")
+
+        logger.info("TaskFlow API shut down.")
 
 
 app = FastAPI(
@@ -52,6 +85,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+# ---------------- CORS ----------------
 
 app.add_middleware(
     CORSMiddleware,
@@ -68,6 +103,46 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ---------------- HELPER FUNCTIONS ----------------
+
+def get_or_create_preferences(
+    db: Session,
+    user_id: int
+):
+    preference = (
+        db.query(UserPreference)
+        .filter(UserPreference.user_id == user_id)
+        .first()
+    )
+
+    if preference is None:
+        preference = UserPreference(
+            user_id=user_id,
+            reminders_enabled=True,
+            default_reminder_minutes=60,
+            browser_notifications_enabled=False
+        )
+
+        db.add(preference)
+        db.commit()
+        db.refresh(preference)
+
+    return preference
+
+
+def validate_task_fields(task_data):
+    if task_data.priority not in VALID_PRIORITIES:
+        raise HTTPException(400, "Invalid priority")
+
+    if (
+        task_data.category is not None
+        and task_data.category not in VALID_CATEGORIES
+    ):
+        raise HTTPException(400, "Invalid category")
+
+
+# ---------------- HOME AND HEALTH ----------------
 
 @app.get("/")
 def home():
@@ -199,11 +274,13 @@ def create_task(
     if not title:
         raise HTTPException(422, "Title cannot be empty")
 
-    if task.priority not in VALID_PRIORITIES:
-        raise HTTPException(400, "Invalid priority")
+    validate_task_fields(task)
 
-    if task.category not in VALID_CATEGORIES:
-        raise HTTPException(400, "Invalid category")
+    if task.reminder_enabled and task.reminder_at is None:
+        raise HTTPException(
+            422,
+            "A reminder date and time are required when reminders are enabled"
+        )
 
     new_task = Task(
         title=title,
@@ -211,6 +288,8 @@ def create_task(
         completed=task.completed,
         due_date=task.due_date,
         category=task.category,
+        reminder_at=task.reminder_at,
+        reminder_enabled=task.reminder_enabled,
         owner_id=current_user.id
     )
 
@@ -248,14 +327,7 @@ def update_task(
     if not title:
         raise HTTPException(422, "Title cannot be empty")
 
-    if updated.priority not in VALID_PRIORITIES:
-        raise HTTPException(400, "Invalid priority")
-
-    if (
-        updated.category is not None
-        and updated.category not in VALID_CATEGORIES
-    ):
-        raise HTTPException(400, "Invalid category")
+    validate_task_fields(updated)
 
     task.title = title
     task.priority = updated.priority
@@ -264,6 +336,37 @@ def update_task(
 
     if updated.category is not None:
         task.category = updated.category
+
+    # Only modify reminder settings if the client supplied them.
+    supplied_fields = updated.model_fields_set
+
+    reminder_datetime_changed = False
+
+    if "reminder_at" in supplied_fields:
+        if task.reminder_at != updated.reminder_at:
+            reminder_datetime_changed = True
+
+        task.reminder_at = updated.reminder_at
+
+    if "reminder_enabled" in supplied_fields:
+        task.reminder_enabled = updated.reminder_enabled
+
+    elif "reminder_at" in supplied_fields:
+        # Supplying a non-null reminder datetime enables it by default.
+        task.reminder_enabled = updated.reminder_at is not None
+
+    if reminder_datetime_changed:
+        task.reminder_sent_at = None
+
+    if "reminder_enabled" in supplied_fields:
+        if updated.reminder_enabled:
+            task.reminder_sent_at = None
+
+    if task.reminder_enabled and task.reminder_at is None:
+        raise HTTPException(
+            422,
+            "A reminder date and time are required when reminders are enabled"
+        )
 
     try:
         db.commit()
@@ -300,6 +403,191 @@ def delete_task(
             "message": "Task deleted successfully",
             "id": task_id
         }
+
+    except Exception:
+        db.rollback()
+        raise
+
+
+# ==================================================
+#                NOTIFICATION CENTER
+# ==================================================
+
+
+# ---------------- GET NOTIFICATIONS ----------------
+
+@app.get(
+    "/notifications",
+    response_model=list[NotificationResponse]
+)
+def get_notifications(
+    limit: int = Query(default=30, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return (
+        db.query(Notification)
+        .filter(Notification.user_id == current_user.id)
+        .order_by(Notification.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+
+# ---------------- UNREAD COUNT ----------------
+
+@app.get("/notifications/unread-count")
+def get_unread_count(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    count = (
+        db.query(Notification)
+        .filter(
+            Notification.user_id == current_user.id,
+            Notification.is_read.is_(False)
+        )
+        .count()
+    )
+
+    return {"unread_count": count}
+
+
+# ---------------- MARK ONE AS READ ----------------
+
+@app.patch(
+    "/notifications/{notification_id}/read",
+    response_model=NotificationResponse
+)
+def mark_notification_read(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    notification = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.user_id == current_user.id
+    ).first()
+
+    if notification is None:
+        raise HTTPException(404, "Notification not found")
+
+    notification.is_read = True
+
+    db.commit()
+    db.refresh(notification)
+
+    return notification
+
+
+# ---------------- MARK ALL AS READ ----------------
+
+@app.patch("/notifications/read-all")
+def mark_all_notifications_read(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    updated_count = (
+        db.query(Notification)
+        .filter(
+            Notification.user_id == current_user.id,
+            Notification.is_read.is_(False)
+        )
+        .update(
+            {Notification.is_read: True},
+            synchronize_session=False
+        )
+    )
+
+    db.commit()
+
+    return {
+        "message": "All notifications marked as read",
+        "updated_count": updated_count
+    }
+
+
+# ---------------- DELETE NOTIFICATION ----------------
+
+@app.delete("/notifications/{notification_id}")
+def delete_notification(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    notification = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.user_id == current_user.id
+    ).first()
+
+    if notification is None:
+        raise HTTPException(404, "Notification not found")
+
+    db.delete(notification)
+    db.commit()
+
+    return {
+        "message": "Notification deleted successfully",
+        "id": notification_id
+    }
+
+
+# ==================================================
+#                  USER PREFERENCES
+# ==================================================
+
+
+# ---------------- GET PREFERENCES ----------------
+
+@app.get(
+    "/preferences",
+    response_model=UserPreferenceResponse
+)
+def get_preferences(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    preference = get_or_create_preferences(
+        db,
+        current_user.id
+    )
+
+    return preference
+
+
+# ---------------- UPDATE PREFERENCES ----------------
+
+@app.put(
+    "/preferences",
+    response_model=UserPreferenceResponse
+)
+def update_preferences(
+    updated: UserPreferenceUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    preference = get_or_create_preferences(
+        db,
+        current_user.id
+    )
+
+    preference.reminders_enabled = updated.reminders_enabled
+
+    preference.default_reminder_minutes = (
+        updated.default_reminder_minutes
+    )
+
+    preference.browser_notifications_enabled = (
+        updated.browser_notifications_enabled
+    )
+
+    try:
+        db.commit()
+        db.refresh(preference)
+
+        return preference
 
     except Exception:
         db.rollback()
