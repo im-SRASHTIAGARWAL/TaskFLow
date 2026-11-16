@@ -1447,3 +1447,8 @@ button:disabled {
         flex-wrap: wrap;
     }
 }
+
+/* Fix: Hide login screen after successful login */
+.auth-section.hidden {
+    display: none;
+}
